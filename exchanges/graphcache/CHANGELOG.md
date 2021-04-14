@@ -1,5 +1,13 @@
 # @urql/exchange-graphcache
 
+## 4.0.1
+
+### Patch Changes
+
+- Allow for the schema subscription and mutationType to be null, by [@JoviDeCroock](https://github.com/JoviDeCroock) (See [#1530](https://github.com/FormidableLabs/urql/pull/1530))
+- Updated dependencies (See [#1509](https://github.com/FormidableLabs/urql/pull/1509))
+  - @urql/core@2.0.1
+
 ## 4.0.0
 
 ### Major Changes
