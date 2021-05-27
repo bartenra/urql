@@ -1,8 +1,9 @@
 import { TypedDocumentNode } from '@urql/core';
 import { GraphQLError, DocumentNode, FragmentDefinitionNode } from 'graphql';
+import { IntrospectionData } from './ast';
 
 // Helper types
-export type NullArray<T> = Array<null | T>;
+export type NullArray<T> = Array<null | T | NullArray<T>>;
 
 export interface Fragments {
   [fragmentName: string]: void | FragmentDefinitionNode;
@@ -12,7 +13,7 @@ export interface Fragments {
 export type Primitive = null | number | boolean | string;
 
 export interface ScalarObject {
-  __typename?: never;
+  constructor?: Function;
   [key: string]: any;
 }
 
@@ -24,8 +25,8 @@ export interface SystemFields {
   id?: string | number | null;
 }
 
-export type EntityField = undefined | Scalar | Scalar[];
-export type DataField = Scalar | Scalar[] | Data | NullArray<Data>;
+export type EntityField = undefined | Scalar | NullArray<Scalar>;
+export type DataField = Scalar | Data | NullArray<Scalar> | NullArray<Data>;
 
 export interface DataFields {
   [fieldName: string]: DataField;
@@ -36,9 +37,10 @@ export interface Variables {
 }
 
 export type Data = SystemFields & DataFields;
+export type Entity = null | Data | string;
 export type Link<Key = string> = null | Key | NullArray<Key>;
-export type ResolvedLink = Link<Data>;
 export type Connection = [Variables, string];
+export type FieldArgs = Variables | null | undefined;
 
 export interface FieldInfo {
   fieldKey: string;
@@ -78,33 +80,22 @@ export interface QueryInput<T = Data, V = Variables> {
 
 export interface Cache {
   /** keyOfEntity() returns the key for an entity or null if it's unkeyable */
-  keyOfEntity(data: Data | null | string): string | null;
+  keyOfEntity(entity: Entity): string | null;
 
   /** keyOfField() returns the key for a field */
-  keyOfField(
-    fieldName: string,
-    args?: Variables | null | undefined
-  ): string | null;
+  keyOfField(fieldName: string, args?: FieldArgs): string | null;
 
   /** resolve() retrieves the value (or link) of a field on any entity, given a partial/keyable entity or an entity key */
-  resolve(
-    entity: Data | string | null,
-    fieldName: string,
-    args?: Variables
-  ): DataField;
+  resolve(entity: Entity, fieldName: string, args?: FieldArgs): DataField;
 
   /** @deprecated use resolve() instead */
-  resolveFieldByKey(entity: Data | string | null, fieldKey: string): DataField;
+  resolveFieldByKey(entity: Entity, fieldKey: string): DataField;
 
   /** inspectFields() retrieves all known fields for a given entity */
-  inspectFields(entity: Data | string | null): FieldInfo[];
+  inspectFields(entity: Entity): FieldInfo[];
 
   /** invalidate() invalidates an entity or a specific field of an entity */
-  invalidate(
-    entity: Data | string | null,
-    fieldName?: string,
-    args?: Variables
-  ): void;
+  invalidate(entity: Entity, fieldName?: string, args?: FieldArgs): void;
 
   /** updateQuery() can be used to update the data of a given query using an updater function */
   updateQuery<T = Data, V = Variables>(
@@ -128,6 +119,16 @@ export interface Cache {
     data: T,
     variables?: V
   ): void;
+
+  /** link() can be used to update a given entity field to link to another entity or entities */
+  link(
+    entity: Entity,
+    field: string,
+    args: FieldArgs,
+    link: Link<Entity>
+  ): void;
+  /** link() can be used to update a given entity field to link to another entity or entities */
+  link(entity: Entity, field: string, value: Link<Entity>): void;
 }
 
 type ResolverResult =
@@ -136,13 +137,21 @@ type ResolverResult =
   | null
   | undefined;
 
+export type CacheExchangeOpts = {
+  updates?: Partial<UpdatesConfig>;
+  resolvers?: ResolverConfig;
+  optimistic?: OptimisticMutationConfig;
+  keys?: KeyingConfig;
+  schema?: IntrospectionData;
+  storage?: StorageAdapter;
+};
+
 // Cache resolvers are user-defined to overwrite an entity field result
-export type Resolver = (
-  parent: Data,
-  args: Variables,
-  cache: Cache,
-  info: ResolveInfo
-) => ResolverResult;
+export type Resolver<
+  ParentData = DataFields,
+  Args = Variables,
+  Result = ResolverResult
+> = (parent: ParentData, args: Args, cache: Cache, info: ResolveInfo) => Result;
 
 export interface ResolverConfig {
   [typeName: string]: {
@@ -150,9 +159,9 @@ export interface ResolverConfig {
   };
 }
 
-export type UpdateResolver = (
-  result: Data,
-  args: Variables,
+export type UpdateResolver<ParentData = DataFields, Args = Variables> = (
+  parent: ParentData,
+  args: Args,
   cache: Cache,
   info: ResolveInfo
 ) => void;
@@ -168,11 +177,10 @@ export interface UpdatesConfig {
   };
 }
 
-export type OptimisticMutationResolver = (
-  vars: Variables,
-  cache: Cache,
-  info: ResolveInfo
-) => null | Data | NullArray<Data>;
+export type OptimisticMutationResolver<
+  Args = Variables,
+  Result = Link<Data>
+> = (vars: Args, cache: Cache, info: ResolveInfo) => Result;
 
 export interface OptimisticMutationConfig {
   [mutationFieldName: string]: OptimisticMutationResolver;

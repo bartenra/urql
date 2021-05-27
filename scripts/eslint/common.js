@@ -17,13 +17,12 @@ module.exports = {
     'build/',
     'coverage/',
     'benchmark/',
-    'example/',
-    'examples/',
     'scripts/'
   ],
   plugins: [
     'react-hooks',
     'prettier',
+    'jest',
     'es5',
   ],
   rules: {
@@ -63,6 +62,11 @@ module.exports = {
       rules: {
         'es5/no-es6-methods': 'off',
         'es5/no-es6-static-methods': 'off',
+
+        'jest/no-disabled-tests': 'error',
+        'jest/no-focused-tests': 'error',
+        'jest/no-identical-title': 'warn',
+        'jest/consistent-test-it': ['warn', { fn: 'it' }],
       }
     }
   ],
@@ -70,6 +74,22 @@ module.exports = {
   settings: {
     react: {
       version: 'detect',
+    },
+    'import/extensions': [
+      '.js',
+      '.jsx',
+      '.ts',
+      '.tsx',
+    ],
+    'import/resolver': {
+      node: {
+        extensions: [
+          '.js',
+          '.jsx',
+          '.ts',
+          '.tsx',
+        ]
+      },
     },
   },
 };

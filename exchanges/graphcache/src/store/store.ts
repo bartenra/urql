@@ -7,16 +7,19 @@ import {
   ResolverConfig,
   DataField,
   Variables,
+  FieldArgs,
+  Link,
   Data,
   QueryInput,
-  UpdatesConfig,
   UpdateResolver,
   OptimisticMutationConfig,
   KeyingConfig,
+  Entity,
+  CacheExchangeOpts,
 } from '../types';
 
 import { invariant } from '../helpers/help';
-import { contextRef } from '../operations/shared';
+import { contextRef, ensureLink } from '../operations/shared';
 import { read, readFragment } from '../operations/query';
 import { writeFragment, startWrite } from '../operations/write';
 import { invalidateEntity } from '../operations/invalidate';
@@ -24,7 +27,6 @@ import { keyOfField } from './keys';
 import * as InMemoryData from './data';
 
 import {
-  IntrospectionData,
   SchemaIntrospector,
   buildClientSchema,
   expectValidKeyingConfig,
@@ -35,15 +37,9 @@ import {
 
 type RootField = 'query' | 'mutation' | 'subscription';
 
-export interface StoreOpts {
-  updates?: Partial<UpdatesConfig>;
-  resolvers?: ResolverConfig;
-  optimistic?: OptimisticMutationConfig;
-  keys?: KeyingConfig;
-  schema?: IntrospectionData;
-}
-
-export class Store implements Cache {
+export class Store<
+  C extends Partial<CacheExchangeOpts> = Partial<CacheExchangeOpts>
+> implements Cache {
   data: InMemoryData.InMemoryData;
 
   resolvers: ResolverConfig;
@@ -55,8 +51,8 @@ export class Store implements Cache {
   rootFields: { query: string; mutation: string; subscription: string };
   rootNames: { [name: string]: RootField };
 
-  constructor(opts?: StoreOpts) {
-    if (!opts) opts = {};
+  constructor(opts?: C) {
+    if (!opts) opts = {} as C;
 
     this.resolvers = opts.resolvers || {};
     this.optimisticMutations = opts.optimistic || {};
@@ -106,7 +102,7 @@ export class Store implements Cache {
 
   keyOfField = keyOfField;
 
-  keyOfEntity(data: Data | null | string) {
+  keyOfEntity(data: Entity) {
     // In resolvers and updaters we may have a specific parent
     // object available that can be used to skip to a specific parent
     // key directly without looking at its incomplete properties
@@ -129,11 +125,7 @@ export class Store implements Cache {
     return key ? `${data.__typename}:${key}` : null;
   }
 
-  resolve(
-    entity: Data | string | null,
-    field: string,
-    args?: Variables
-  ): DataField {
+  resolve(entity: Entity, field: string, args?: FieldArgs): DataField {
     const fieldKey = keyOfField(field, args);
     const entityKey = this.keyOfEntity(entity);
     if (!entityKey) return null;
@@ -145,11 +137,7 @@ export class Store implements Cache {
 
   resolveFieldByKey = this.resolve;
 
-  invalidate(
-    entity: Data | string | null,
-    field?: string,
-    args?: Variables | null
-  ) {
+  invalidate(entity: Entity, field?: string, args?: FieldArgs) {
     const entityKey = this.keyOfEntity(entity);
 
     invariant(
@@ -166,7 +154,7 @@ export class Store implements Cache {
     invalidateEntity(entityKey, field, args);
   }
 
-  inspectFields(entity: Data | string | null): FieldInfo[] {
+  inspectFields(entity: Entity): FieldInfo[] {
     const entityKey = this.keyOfEntity(entity);
     return entityKey ? InMemoryData.inspectFields(entityKey) : [];
   }
@@ -208,5 +196,34 @@ export class Store implements Cache {
     variables?: V
   ): void {
     writeFragment(this, formatDocument(fragment), data, variables as any);
+  }
+
+  link(
+    entity: Entity,
+    field: string,
+    args: FieldArgs,
+    link: Link<Entity>
+  ): void;
+
+  link(entity: Entity, field: string, link: Link<Entity>): void;
+
+  link(
+    entity: Entity,
+    field: string,
+    argsOrLink: FieldArgs | Link<Entity>,
+    maybeLink?: Link<Entity>
+  ): void {
+    const args = (maybeLink !== undefined ? argsOrLink : null) as FieldArgs;
+    const link = (maybeLink !== undefined
+      ? maybeLink
+      : argsOrLink) as Link<Entity>;
+    const entityKey = ensureLink(this, entity);
+    if (typeof entityKey === 'string') {
+      InMemoryData.writeLink(
+        entityKey,
+        keyOfField(field, args),
+        ensureLink(this, link)
+      );
+    }
   }
 }

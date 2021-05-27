@@ -134,7 +134,7 @@ The `@urql/core` package exports a function called `createClient` which we can u
 create the GraphQL client. This central `Client` manages all of our GraphQL requests and results.
 
 ```js
-import { createClient } from 'urql';
+import { createClient } from '@urql/core';
 
 const client = createClient({
   url: 'http://localhost:3000/graphql',
@@ -172,14 +172,14 @@ and how to cache data in a certain order. By default, this will be populated wit
 `defaultExchanges`.
 
 ```js
-import { createClient, defaultExchanges } from 'urql';
+import { createClient, defaultExchanges } from '@urql/core';
 
 const client = createClient({
   url: 'http://localhost:3000/graphql',
   // the default:
   exchanges: defaultExchanges,
   // the same as:
-  exchanges: [dedupExchange, cacheExchange, fetchExchange]
+  exchanges: [dedupExchange, cacheExchange, fetchExchange],
 });
 ```
 
@@ -294,7 +294,7 @@ the query anymore or refetches it. We can think of this pattern as being very si
 event hubs.
 
 We're using [the Wonka library for our streams](https://wonka.kitten.sh/basics/background), which
-we'll learn more about [on the "Architecture" page](./architecture.md). But we can think of this as
+we'll learn more about [on the "Architecture" page](../architecture.md). But we can think of this as
 React's effects being called over time, or as `window.addEventListener`.
 
 ## Common Utilities in Core

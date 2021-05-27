@@ -1,8 +1,14 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 import { minifyIntrospectionQuery } from '@urql/introspection';
-import { gql, maskTypename } from '@urql/core';
-import { mocked } from 'ts-jest/utils';
+import { formatDocument, gql, maskTypename } from '@urql/core';
+
+import {
+  executeSync,
+  getIntrospectionQuery,
+  buildClientSchema,
+  parse,
+} from 'graphql';
 
 import { Data, StorageAdapter } from '../types';
 import { makeContext, updateContext } from '../operations/shared';
@@ -11,7 +17,8 @@ import { write, writeOptimistic } from '../operations/write';
 import * as InMemoryData from './data';
 import { Store } from './store';
 import { noop } from '../test-utils/utils';
-import { getIntrospectionQuery, parse } from 'graphql';
+
+const mocked = (x: any): any => x;
 
 const Appointment = gql`
   query appointment($id: String) {
@@ -926,16 +933,6 @@ describe('Store with storage', () => {
     expect(fakeUpdater).toBeCalledTimes(1);
   });
 
-  it('should not warn for an introspection result root', function () {
-    // NOTE: Do not wrap this require in `minifyIntrospectionQuery`!
-    // eslint-disable-next-line
-    const schema = require('../test-utils/simple_schema.json');
-    const store = new Store({ schema });
-
-    query(store, { query: parse(getIntrospectionQuery()) }, schema);
-    expect(console.warn).toBeCalledTimes(0);
-  });
-
   it('should warn when __typename is missing when store.writeFragment is called', () => {
     InMemoryData.initDataState('write', store.data, null);
 
@@ -965,5 +962,135 @@ describe('Store with storage', () => {
       "Couldn't find __typename when writing.\nIf you're writing to the cache manually have to pass a `__typename` property on each entity in your data."
     );
     expect(warnMessage).toContain('https://bit.ly/2XbVrpR#14');
+  });
+});
+
+describe('Store introspection', () => {
+  it('should not warn for an introspection result root (of an unminified schema)', function () {
+    // NOTE: Do not wrap this require in `minifyIntrospectionQuery`!
+    // eslint-disable-next-line
+    const schema = require('../test-utils/simple_schema.json');
+    const store = new Store({ schema });
+
+    const introspectionQuery = formatDocument(parse(getIntrospectionQuery()));
+
+    query(store, { query: introspectionQuery }, schema);
+    expect(console.warn).toBeCalledTimes(0);
+  });
+
+  it('should not warn for an introspection result root (of a minified schema)', function () {
+    // NOTE: Do not wrap this require in `minifyIntrospectionQuery`!
+    // eslint-disable-next-line
+    const schema = require('../test-utils/simple_schema.json');
+    const store = new Store({ schema: minifyIntrospectionQuery(schema) });
+
+    const introspectionQuery = formatDocument(parse(getIntrospectionQuery()));
+
+    query(store, { query: introspectionQuery }, schema);
+    expect(console.warn).toBeCalledTimes(0);
+  });
+
+  it('should not warn for an introspection result with typenames', function () {
+    const schema = buildClientSchema(
+      require('../test-utils/simple_schema.json')
+    );
+    const introspectionQuery = formatDocument(parse(getIntrospectionQuery()));
+
+    const introspectionResult = executeSync({
+      document: introspectionQuery,
+      schema,
+    }).data as any;
+
+    const store = new Store({
+      schema: minifyIntrospectionQuery(introspectionResult),
+    });
+
+    write(store, { query: introspectionQuery }, introspectionResult);
+    query(store, { query: introspectionQuery });
+    expect(console.warn).toBeCalledTimes(0);
+  });
+});
+
+it('should link up entities', () => {
+  const store = new Store();
+  const todo = gql`
+    query test {
+      todo(id: "1") {
+        id
+        title
+        __typename
+      }
+    }
+  `;
+  const author = gql`
+    query testAuthor {
+      author(id: "1") {
+        id
+        name
+        __typename
+      }
+    }
+  `;
+  write(
+    store,
+    {
+      query: todo,
+    },
+    {
+      todo: {
+        id: '1',
+        title: 'learn urql',
+        __typename: 'Todo',
+      },
+      __typename: 'Query',
+    } as any
+  );
+  let { data } = query(store, { query: todo });
+  expect((data as any).todo).toEqual({
+    id: '1',
+    title: 'learn urql',
+    __typename: 'Todo',
+  });
+  write(
+    store,
+    {
+      query: author,
+    },
+    {
+      author: { __typename: 'Author', id: '1', name: 'Formidable' },
+      __typename: 'Query',
+    } as any
+  );
+  InMemoryData.initDataState('write', store.data, null);
+  store.link((data as any).todo, 'author', {
+    __typename: 'Author',
+    id: '1',
+    name: 'Formidable',
+  });
+  InMemoryData.clearDataState();
+  const todoWithAuthor = gql`
+    query test {
+      todo(id: "1") {
+        id
+        title
+        __typename
+        author {
+          id
+          name
+          __typename
+        }
+      }
+    }
+  `;
+  ({ data } = query(store, { query: todoWithAuthor }));
+  expect((data as any).todo).toEqual({
+    id: '1',
+    title: 'learn urql',
+    __typename: 'Todo',
+    author: {
+      __typename: 'Author',
+      id: '1',
+      name: 'Formidable',
+    },
   });
 });
